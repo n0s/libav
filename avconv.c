@@ -308,6 +308,7 @@ static int         nb_output_files   = 0;
 
 static FilterGraph **filtergraphs;
 int               nb_filtergraphs;
+int               oldsar_num;
 
 typedef struct OptionsContext {
     /* input/output options */
@@ -2045,6 +2046,7 @@ static int decode_video(InputStream *ist, AVPacket *pkt, int *got_output)
     void *buffer_to_free = NULL;
     int i, ret = 0, resample_changed;
     float quality;
+    int sar_check_result = 0;
 
     if (!ist->decoded_frame && !(ist->decoded_frame = avcodec_alloc_frame()))
         return AVERROR(ENOMEM);
@@ -2071,13 +2073,31 @@ static int decode_video(InputStream *ist, AVPacket *pkt, int *got_output)
     pre_process_video_frame(ist, (AVPicture *)decoded_frame, &buffer_to_free);
 
     rate_emu_sleep(ist);
-
+    
+    if(!oldsar_num) {
+        oldsar_num = decoded_frame->sample_aspect_ratio.num;
+    }
+    
+    if (oldsar_num != decoded_frame->sample_aspect_ratio.num) {
+        sar_check_result = 1;
+        av_log(NULL, AV_LOG_VERBOSE, "oldsar_num['%d'] != decoded_frame->sample_aspect_ratio.num['%d']\n", oldsar_num, decoded_frame->sample_aspect_ratio.num);
+        oldsar_num = decoded_frame->sample_aspect_ratio.num;
+    } else {
+        av_log(NULL, AV_LOG_DEBUG, "oldsar_num['%d'] == decoded_frame->sample_aspect_ratio.num['%d']\n", oldsar_num, decoded_frame->sample_aspect_ratio.num);
+    }
+    
     if (ist->st->sample_aspect_ratio.num)
         decoded_frame->sample_aspect_ratio = ist->st->sample_aspect_ratio;
 
     resample_changed = ist->resample_width   != decoded_frame->width  ||
                        ist->resample_height  != decoded_frame->height ||
                        ist->resample_pix_fmt != decoded_frame->format;
+    
+    if (sar_check_result == 1) {
+        av_log(NULL, AV_LOG_VERBOSE, "\n\nsar_check_result == 1\n\n");
+        resample_changed = sar_check_result;
+    }
+    
     if (resample_changed) {
         av_log(NULL, AV_LOG_INFO,
                "Input stream #%d:%d frame changed from size:%dx%d fmt:%s to size:%dx%d fmt:%s\n",
